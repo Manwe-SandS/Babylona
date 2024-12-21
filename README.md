@@ -1,6 +1,7 @@
 # Babylona
 12-colour picture for 4-colour computer: [Download binary](https://github.com/Manwe-SandS/Babylona/releases/download/BK-0011M/Babylona.bin)
-Compile it with [PDPy11](https://github.com/pdpy11/pdpy11)
+
+Compile with [PDPy11](https://github.com/pdpy11/pdpy11)
 
 "Babylona" by Manwe and Ivanq from The SandS and Made/Bomb!
 
