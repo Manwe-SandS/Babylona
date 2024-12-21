@@ -1,0 +1,300 @@
+; Screan tweaking subroutine by Manwe/SandS (c) 2021
+; A text must be KOI8-R
+
+
+	.extern ScreenTweak , Screen, InitFont, PRINT
+
+
+		Palette		= 177662	; system registers
+
+		TextWidth	= 188.		; pixels
+		SpaceWidth	= 4			; in pixels
+
+		Screen		= 0			; horisontal screen offset in bytes
+
+
+
+ScreenTweak:
+
+		MOV #8.*2,R0		; set keyboard interruption vectors
+1:			MOV VectorsNew+16(R0),@VectorsNew-2(R0)	; set new vector
+			DEC R0
+		SOB R0,1
+
+		MOV SP,Done+2		; pointer to the return address
+		MOV SP,TweakLoop+4
+		CALL Border
+
+;		CALL InitFont
+		MOV #Text,R1		; text string address
+		MOV #107010,R2		; screen address
+		CALL PRINT
+		CALL Generate
+
+		CLR @#Screen		; Calibrate
+		CLR @#177660		; enable keyboard interruptions
+		MTPS #0				; enable interruptions
+		CLR @#Palette		; set RGB palette and start timer
+		JMP TweakLoop
+
+
+TweakKeys:
+		MOV R2,(R0)			; set light palette
+		PUSH R0
+		MOV @#177662,R0		; read keyboard ASCII code
+		PUSH R1
+		PUSH R2
+1:		NOP
+		BIT #100,@#177716
+		BEQ 1				; wait until the key is released
+		CMP R0,#12			; enter
+		BEQ Done
+		CMP R0,#31			; right
+		BEQ 4
+		CMP R0,#10			; left
+		BNE 6
+
+2:		INC @#Screen
+		MOV #106500,R2		; move left
+		MOV R2,R1
+		INC R1
+		MOV #2250,R0
+3:		.repeat 10 { MOVB (R1)+,(R2)+ }
+		SOB R0,3
+		BR 6
+
+4:		DEC @#Screen
+		MOV #131200,R2		; move right
+		MOV R2,R1
+		DEC R1
+		MOV #2250,R0
+5:		.repeat 10 { MOVB -(R1),-(R2) }
+		SOB R0,5
+
+6:		POP R2
+		POP R1
+		POP R0
+		RTI
+
+Done:	MOV #1000,SP
+		MTPS #340
+		MOV #40000,@#Palette	; set 0 palette and stop VSync timer
+		MOV #340,@#102
+		RET						; calibration is finished
+
+
+Border:	MOV #106510,R2
+		MOV R2,R1
+		MOV #225,R0
+1:			MOV #3,(R1)
+			MOV #140000,56(R1)
+			ADD #100,R1
+		SOB R0,1
+		MOV #30,R0
+2:			MOV #177777,22400(R2)
+			MOV #177777,(R2)+
+		SOB R0,2
+		RET
+
+
+InitFont:
+; replace minus symbol for small letters
+		MOV #Text,R1
+		MOV #177400,R2
+3:		MOVB (R1)+,R0
+		BEQ 4
+		BIC R2,R0
+		CMP R0,#55		; minus symbol
+		BNE 3
+		MOVB (R1),R0
+		BIC R2,R0
+		CMP R0,#140		; if the next letter is not small
+		BLE 3
+		CMP R0,#340		; if the next letter is not small
+		BGE 3
+		MOVB #177,-1(R1)	; replace symbol
+4:		TSTB (R1)
+		BNE 3
+; init font
+		MOV #FONT,R1	; font file address
+		MOV (R1)+,R0	; number of letters in font
+5:		ADD #FONT,(R1)+	; fix adresses in table
+		SOB R0,5
+		RET
+
+; R1 - text string address, R2 - screen address
+
+PRINT:	CLR Position
+		CMP R2,#137000	; end of page?
+		BLO 1
+			RET
+1:		MOV #1400,R0		; shift to N pixels (3 = no shift)
+
+		MOV R2,LIN2+2		; set next line screen address
+		ADD #1100,LIN2+2	; line height
+
+Pr1:	MOVB (R1)+,R3		; get a leter
+		BNE Pr2				; if not the end of paragraph
+			TSTB (R1)		; end of text?
+			BNE LIN2
+				RET
+LIN2:		MOV #50000,R2	; carriage return
+			ADD #500,R2		; additional height
+			BR PRINT
+
+Pr2:	CMP R3,#37			; if non broken space
+		BEQ SPACE1
+		CMP R3,#12			; if carriage return
+		BEQ CR
+		CMP R3,#40			; if space symbol
+		BEQ SPACE
+			BIC #177400,R3		; print usual symbol
+			CMP R3,#300
+			BLO 1
+				SUB #100,R3		; skip special symbols
+1:			SUB #41,R3			; skip first 41 ASCII symbols
+			ASL R3
+			MOV R1,-(SP)		; save string pointer
+			MOV FONT+2(R3),R1	; graphics address for this letter
+			CALL LETTER
+			MOV (SP)+,R1		; restore string pointer
+		BR Pr1
+
+SPACE:	; seek for the end of the next word
+
+		MOV R1,R5			; text string pointer
+		MOV Position,R4		; pencil position in pixels
+1:		MOVB (R5)+,R3
+		BEQ 4				; if end of paragraph
+		CMP R3,#40
+		BEQ 4				; if space symbol
+		CMP R3,#12
+		BEQ 4				; if CR symbol
+			CMP R3,#37		; if non broken space
+			BNE 2
+				ADD #SpaceWidth,R4
+				BR 1
+
+2:			BIC #177400,R3		; usual symbol
+			CMP R3,#300
+			BLO 3
+				SUB #100,R3		; skip special symbols
+3:			SUB #41,R3
+			ASL R3
+			ADD FONT+4(R3),R4
+			SUB FONT+2(R3),R4	; calculate symbol width
+			BR 1
+4:	; the end of the word
+		CMP R4,#TextWidth		; the right border of the screen?
+		BGE CR
+
+SPACE1:	ADD #SpaceWidth,Position
+		MOV #SpaceWidth-1,R4	; space width
+1:		ASL R0				; move pencil
+		ASL R0
+		BNE 2
+			ADD #2,R2		; increase screen address
+			MOV #3,R0		; set pencil to the first point
+2:		SOB R4,1
+		BR Pr1
+
+CR:		MOV LIN2+2,R2		; carriage return
+		CLR Position
+		BR PRINT
+
+
+; draw a letter, shifted by N pixels (from 0 to 7)
+
+LETTER:
+		MOV R2,R5		; save screen address
+		MOV #100,R4
+1:		INC Position
+		MOVB (R1)+,R3
+		BEQ 5
+
+		BIC #177400,R3
+2:		ROR R3			; draw a column of points
+		BCC 3			; if zero skip next command
+		BIS R0,(R2)		; draw a dot
+3:		ADD R4,R2		; next row of the screen
+		TST R3			; no more dots?
+		BNE 2
+
+4:		MOV R5,R2		; column is drawn, switch to next column
+		ASL R0			; move pencil
+		ASL R0
+		BNE 1
+		ADD #2,R2		; increase screen address
+		MOV R2,R5
+		MOV #3,R0		; set pencil to the first point
+		BR 1
+
+5:		MOV R5,R2		; restore screen address
+		ASL R0			; add pixel
+		ASL R0
+		BNE 6
+			ADD #2,R2	; move screen pointer to the right
+			MOV #3,R0
+6:		RET
+
+
+Position:
+		.WORD 0			; pencil position in pixels
+
+FONT:	; number of letters, offset table (for each letter), graphics data
+
+		insert_file "font-8.raw"
+		.EVEN
+
+Text:	.ASCII "All the symbols should be painted yellow. If they are not, turn off your computer, wait a few seconds, and turn it on again. Repeat until success. If nothing helps, move the frame using left and right keys. Press Enter when all the symbols are yellow. In this case you'll see the artwork slightly cropped."
+		.BYTE 12,12
+		.ASCII "Все буквы должны быть желтого цвета. Если это не так, выключите компьютер, подож- дите несколько секунд и включите снова. Повторяйте, пока не получится. Если ничто не помогает, двигайте кадр клавишами вле- во и вправо. Нажмите Ввод когда все буквы станут желтыми. В этом случае изображе- ние будет слегка обрезанным."
+		.BYTE 0,0
+		.EVEN
+
+VectorsNew:
+		.WORD 60,62,100,102,274,276,4,6		; vectors to set
+		.WORD TweakKeys,340,TweakLoop+2,0,TweakKeys,340,Quit,340	; new vectors values
+
+
+Generate:					; generate palette switch code
+		MOV #PaletteSwitch,R2
+		MOV #204.,R3		; picture height
+2:			MOV #CODE,R1
+			MOV #(TweakLoop-CODE)/2,R0
+3:				MOV (R1)+,(R2)+
+			SOB R0,3
+		SOB R3,2
+		MOV #137,(R2)+		; JMP @# instruction code
+		MOV #TweakLoop,(R2)+		; address
+		RET
+
+CODE:	MOV R1,(R0)
+		MOV R2,(R0)
+		MOV R2,(R0)
+		MOV R2,(R0)
+		MOV R2,(R0)
+		MOV R1,(R0)
+		MOV #10.*400,R1		; palette
+		MOV #7  *400,R2		; palette
+
+TweakLoop:
+		WAIT				; wait for v-sync
+		MOV #1000,SP		; restore stack pointer after interruption
+		MOV #Palette,R0
+		MOV #7  *400,R2		; palettes
+		MOV #10.*400,R1
+		MOV #7  *400,R2
+		MOV #10.*400,R1
+		MOV #7  *400,R2
+
+;		MOV #446,DELAY+2	; ideal
+		MOV #443,DELAY+2
+DELAY:	DEC #443
+		BNE DELAY
+
+; do not separate Loop and PaletteSwitch!
+
+PaletteSwitch:	; 7764 bytes of code will be generated here
+
+	.END

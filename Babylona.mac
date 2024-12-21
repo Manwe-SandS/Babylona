@@ -1,0 +1,231 @@
+; palette demo by the SandS (c) 2021-2024
+; the picture was kindly provided by Facet himself
+
+;	make_bin
+;	make_wav
+
+	.LINK 2000
+
+		Palette		= 177662	; system registers
+		Scroll		= 177664
+		Port		= 177714	; AY port
+		Memory		= 177716
+
+		p0			= 0b1110	; memory page 0
+		p1			= 0b1000
+		p2			= 0b1010
+		p3			= 0b1011
+		DOS			= 0b1100	; DOS page
+		Screen1		= 0b1001
+		Screen2		= 0b1111
+		p7			= 0b1101	; system page
+		Hi			= 400
+		Lo			= 10000
+
+		Run			= 20000		; generate code here
+		Palettes	= 72672
+
+		.extern Quit
+
+
+		CALL InitFont
+		CMPB @#177717,#200	; is it BK-0010 or BK-0011?
+		BNE Setup				; skip if BK-0011
+			MOV #Not11,R1		; text string address
+			MOV #57025,R2		; screen address
+			CALL PRINT
+			WAIT
+			RET
+
+		; system setup
+Setup:	CALL InitDispatcher
+	
+		MOV #40000,R1			; clear 2 screens
+		MOV R1,R0
+		CLR (R1)+
+		SOB R0,.-2
+		MOV #1330,@#Scroll		; screen scroll position
+
+		MOV #Credits,R1			; text string address
+		MOV #56416,R2			; screen address
+		CALL PRINT
+		MOV #Made,R1			; text string address
+		MOV #60016,R2			; screen address
+		CALL PRINT
+
+		MOV #p2*Lo+Screen1*Hi,@#Memory
+
+		CALL @#ScreenTweak
+
+		MOV #Quit,@#60
+		MOV #Quit,@#274
+
+		MOV #106000,R1			; artistic clear screen
+		MOV #132000,R2
+		MOV #120,R3
+1:			MOV #2000,R5		; pause
+			SOB R5,.
+2:			MOV #40,R0
+3:				MOV R5,(R1)+
+				MOV R5,-(R2)
+			SOB R0,3
+		SOB R3,1
+
+		MOV #140000,@#Palette	; show empty screen page to hide unpacking
+
+		MOV #File,R1
+		MOV #Palettes,R2
+		CALL Unpack
+
+
+Correction:
+		MOV #256.,R5		; picture height
+		MOV #100,R3
+		MOV @#Screen,R4		; space in bytes
+		BEQ Generate
+		BMI 2
+		; move left
+		MOV #100000,R2
+		MOV R2,R1
+		ADD R4,R1
+		SUB R4,R3			; picture lenght in bytes
+1:			MOV R3,R0
+			MOVB (R1)+,(R2)+
+			SOB R0,.-2
+			MOV R4,R0
+			CLRB (R2)+
+			SOB R0,.-2
+			ADD R4,R1
+		SOB R5,1
+		BR Generate
+		; move right
+2:		MOV #140000,R2
+		MOV R2,R1
+		ADD R4,R1
+		ADD R4,R3			; picture lenght in bytes
+3:			MOV R3,R0
+			MOVB -(R1),-(R2)
+			SOB R0,.-2
+			SUB R4,R0
+			CLRB -(R2)
+			SOB R0,.-2
+			ADD R4,R1
+		SOB R5,3
+
+
+Generate:	; 12056 bytes of code
+
+		MOV #Palettes,R3
+		MOV #Loop+11,R1			; initial palettes
+		MOV #6.,R0
+1:			MOVB (R3)+,(R1)
+			ADD #4,R1
+		SOB R0,1
+
+		MOV #Run,R2				; copy code here
+		MOV #Loop,R1
+		MOV #(LoopEnd-Loop)/2,R0
+2:			MOV (R1)+,(R2)+
+		SOB R0,2
+
+3:			MOV #Code,R1		; generate code
+			MOV #6,R0
+4:				MOVB (R3)+,R4	; get register number
+				SWAB R4
+				ASR R4
+				ASR R4
+				BIS #10010,R4	; MOV R0,(R0)
+				MOV R4,(R2)+	; apply register number
+			SOB R0,4
+			MOV #2,R0
+5:				MOVB (R3)+,R4		; get register number
+				BIS #12700,R4		; MOV #N,R0
+				MOV R4,(R2)+
+				MOVB (R3)+,R4		; get palette number
+				SWAB R4
+				CLRB R4
+				MOV R4,(R2)+
+			SOB R0,5
+		DEC #256.			; picture height
+		BNE 3
+		MOV #137,(R2)+		; JMP @# instruction code
+		MOV #Run,(R2)+		; address
+
+		MOV #Run+2,@#100
+		MOV #140,@#102
+		CLR @#Palette		; set RGB palette and start timer
+		MTPS #0				; enable interruptions
+		WAIT
+		HALT
+
+
+Code:	MOV R1,(R0)
+		MOV R2,(R0)
+		MOV R3,(R0)
+		MOV R4,(R0)
+		MOV R5,(R0)
+		MOV R6,(R0)
+		MOV #0,R1
+		MOV #400,R2
+
+Loop:	WAIT				; wait for v-sync
+		MOV #Palette,R0
+		MOV #0,R1			; palettes
+		MOV #0,R2
+		MOV #0,R3
+		MOV #0,R4
+		MOV #0,R5
+		MOV #0,R6
+
+		MOV #443,Delay+2	; 446 ideal
+Delay:	DEC #443
+		BNE Delay
+;		NOP
+LoopEnd:
+
+
+Quit:		MTPS #340
+			MOV #140000,@#Palette	; set 0 palette and stop VSync timer
+			MOV (PC)+,SP
+SavedSP:	.WORD 760
+			MOV #7*2,R0
+1:				MOV Vectors+20(R0),@Vectors(R0)
+			SOB R0,1
+			MOV #16000,@#Memory		; Screen1*Lo+DOS*Hi
+			RET
+			; return to MKDOS
+
+InitDispatcher:
+
+1:		MTPS #340				; disable interruptions
+		MOV SP,@#SavedSP
+		ADD #2,@#SavedSP
+		MOV #8.*2,R0
+2:			MOV @Vectors-2(R0),Vectors+16(R0)	; save old vector
+		SOB R0,2
+		MOV #Quit,@#4			; set new Stop vector
+		MOV R0,@#177716			; allow Stop interruptions
+		MOV #Screen2*Lo+Screen1*Hi,@#Memory
+		RET
+
+Vectors:	.WORD 60,62,100,102,274,276,4,6		; vectors to save
+			.BLKW 10							; saved vectors values
+
+
+			.include "unlzsa3.mac"
+
+
+Credits:	.ASCIZ "Coded by Manwe & Ivanq in 2021"
+			.BYTE 0,0
+Made:		.ASCIZ "Picture: Babylona by Made/Bomb!"
+			.BYTE 0,0
+			.EVEN
+File:		insert_file "made-palette-image.lzsa3"
+			.EVEN
+			.include "tweak.mac"
+
+Not11:		.ASCIZ "BK 0011M required!"
+			.BYTE 0,0
+			.EVEN
+
+	.END
