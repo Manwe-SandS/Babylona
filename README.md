@@ -1,5 +1,5 @@
 # Babylona
-12-colour picture for 4-colour computer: [Download](https://github.com/Manwe-SandS/Babylona/releases/tag/BK-0011M)
+12-colour picture for 4-colour computer: [Download](https://github.com/Manwe-SandS/Babylona/releases/download/BK-0011M/Babylona.bin)
 
 "Babylona" by Manwe and Ivanq from The SandS and Made/Bomb!
 
