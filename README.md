@@ -15,4 +15,6 @@ So we release this display hack as a single in May 2024.
 We hope you enjoy this small piece of code anyway, since BK
 can only display 3 colours on the black canvas, officially.
 
-![photo_2024-05-26 07 06 02](https://github.com/user-attachments/assets/b5a7bda1-0776-4514-92b1-bc3778a69b9e)
+![Babylona](https://github.com/user-attachments/assets/0b1b19af-61bc-4f91-843b-136602eb0aba)
+
+![Babylona tweak](https://github.com/user-attachments/assets/f20cc735-86c0-4bb1-b22f-25734dd1bccf)
